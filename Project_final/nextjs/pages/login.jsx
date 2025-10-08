@@ -44,7 +44,7 @@ export default function Login() {
 
       setForm({ username: "", password: "" });
     } catch (err) {
-      Swal.fire({ title: "Error", text: err.message, icon: "error" });
+      Swal.fire({ title: "Error!", text: err.message, icon: "error" });
     }
   };
 
