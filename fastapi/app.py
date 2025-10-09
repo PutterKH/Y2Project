@@ -6,18 +6,19 @@ from routes.users import router as users_router
 from routes.stock import router as stock_router
 from routes.portfolio import router as portfolio_router
 from fastapi.middleware.cors import CORSMiddleware
-from routes.portfolio import router as portfolio_router
 from dotenv import load_dotenv
 import os
 
 load_dotenv()
+
 app = FastAPI()
+
 app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True, 
-        allow_methods=["*"],     
-        allow_headers=["*"],    
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(users_router, prefix="/api")

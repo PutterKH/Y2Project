@@ -1,4 +1,3 @@
-// pages/calculator.js
 import React, { useMemo, useState, useEffect } from "react";
 import {
   Typography,
@@ -43,14 +42,14 @@ export default function CalculatorPage() {
   const [error, setError] = useState("");
   const [portfolioValue, setPortfolioValue] = useState(0);
 
-  // 🔹 Fetch total portfolio value from backend
   async function fetchPortfolioValue() {
     try {
-      const res = await fetch("http://localhost:8000/api/portfolio/1"); // user_id = 1
+      const userId = localStorage.getItem("user_id");
+      if (!userId) return;
+
+      const res = await fetch(`http://localhost:8000/api/portfolio/${userId}`);
       if (!res.ok) throw new Error("Failed to fetch portfolio data");
       const data = await res.json();
-
-      // Calculate total (shares × avg_price)
       const total = data.reduce(
         (sum, stock) => sum + stock.shares * stock.avg_price,
         0
@@ -62,106 +61,53 @@ export default function CalculatorPage() {
     }
   }
 
-  // 🔹 Auto-refresh every 60 sec
   useEffect(() => {
     fetchPortfolioValue();
     const interval = setInterval(fetchPortfolioValue, 60000);
     return () => clearInterval(interval);
   }, []);
 
-  // 🔹 Core calculation logic
   const { outD, outG, outY, outR, progress } = useMemo(() => {
     const D = parseNum(dca);
     const G = parseNum(goal);
     const Y = parseNum(years);
     const R = parseNum(roi);
-
-    const provided = [
-      D !== null && !Number.isNaN(D),
-      G !== null && !Number.isNaN(G),
-      Y !== null && !Number.isNaN(Y),
-      R !== null && !Number.isNaN(R),
-    ];
+    const provided = [D, G, Y, R].map(
+      (v) => v !== null && !Number.isNaN(v)
+    );
     const count = provided.filter(Boolean).length;
 
-    let outD = D ?? null;
-    let outG = G ?? null;
-    let outY = Y ?? null;
-    let outR = R ?? null;
+    let outD = D ?? null,
+      outG = G ?? null,
+      outY = Y ?? null,
+      outR = R ?? null;
 
     if (count === 3) {
-      const missingIdx = provided.indexOf(false);
-
-      if (missingIdx === 0) {
-        // Missing DCA
-        const Mtarget = G / (1 + R / 100);
-        outD = Mtarget / (12 * Y);
-
-      } else if (missingIdx === 1) {
-        // Missing Goal
-        const Mcalc = D * 12 * Y;
-        outG = Mcalc * (1 + R / 100);
-
-        // ROI <= 0 case
-        if (outG < 0 || Mcalc >= G) {
-          outG = G;
-          outR = 0;
-          outY = Math.ceil((G / (D * 12)) * 10) / 10; // round up X.Y years
-        }
-
-      } else if (missingIdx === 2) {
-        // Missing Years
-        const Mtarget = G / (1 + R / 100);
-        outY = Mtarget / (12 * D);
-
-        // ROI <= 0 case
-        if (D * 12 * outY >= G) {
-          outY = Math.ceil((G / (D * 12)) * 10) / 10;
-          outR = 0;
-        }
-
-      } else if (missingIdx === 3) {
-        // Missing ROI
-        const Mcalc = D * 12 * Y;
-        outR = ((G - Mcalc) / Mcalc) * 100;
-
-        if (outR < 0) {
-          outR = 0;
-          outG = G;
-          outY = Math.ceil((G / (D * 12)) * 10) / 10; // round up X.Y years
-        }
-      }
+      const idx = provided.indexOf(false);
+      if (idx === 0) outD = (G / (1 + R / 100)) / (12 * Y);
+      else if (idx === 1) outG = D * 12 * Y * (1 + R / 100);
+      else if (idx === 2) outY = (G / (1 + R / 100)) / (12 * D);
+      else if (idx === 3) outR = ((G - D * 12 * Y) / (D * 12 * Y)) * 100;
     }
 
-    // 🔹 Progress based on portfolio total only
     const progress =
       G && parseNum(G) > 0
         ? Math.max(0, Math.min(100, (portfolioValue / parseNum(G)) * 100))
         : 0;
-
     return { outD, outG, outY, outR, progress };
   }, [dca, goal, years, roi, portfolioValue]);
 
-  // 🔹 Button validation
   const onCalc = () => {
-    const D = parseNum(dca);
-    const G = parseNum(goal);
-    const Y = parseNum(years);
-    const R = parseNum(roi);
-    const provided = [D, G, Y, R].filter(
+    const inputs = [dca, goal, years, roi].map(parseNum).filter(
       (n) => n !== null && !Number.isNaN(n)
-    ).length;
-
-    if (provided !== 3) {
-      setError("Please enter exactly 3 values; I'll calculate the missing one.");
-      return;
-    }
+    );
+    if (inputs.length !== 3)
+      return setError("Please enter exactly 3 values.");
     setError("");
   };
 
   return (
     <Grid container spacing={4} sx={{ mt: 2 }}>
-      {/* CALCULATOR */}
       <Grid item xs={12} md={5}>
         <Card variant="outlined">
           <CardContent>
@@ -169,81 +115,31 @@ export default function CalculatorPage() {
               Calculator
             </Typography>
             <Stack spacing={2}>
-              <TextField
-                label="DCA per month"
-                value={dca}
-                onChange={(e) => setDca(e.target.value)}
-                placeholder="e.g., 500"
-              />
-              <TextField
-                label="Goal ($)"
-                value={goal}
-                onChange={(e) => setGoal(e.target.value)}
-                placeholder="e.g., 20000"
-              />
-              <TextField
-                label="Time (years)"
-                value={years}
-                onChange={(e) => setYears(e.target.value)}
-                placeholder="e.g., 5"
-              />
-              <TextField
-                label="ROI (%)"
-                value={roi}
-                onChange={(e) => setRoi(e.target.value)}
-                placeholder="e.g., 8"
-              />
-
-              <Button
-                variant="contained"
-                sx={{ bgcolor: "orange" }}
-                onClick={onCalc}
-              >
-                CALC
-              </Button>
-
+              <TextField label="DCA per month" value={dca} onChange={(e)=>setDca(e.target.value)} />
+              <TextField label="Goal ($)" value={goal} onChange={(e)=>setGoal(e.target.value)} />
+              <TextField label="Time (years)" value={years} onChange={(e)=>setYears(e.target.value)} />
+              <TextField label="ROI (%)" value={roi} onChange={(e)=>setRoi(e.target.value)} />
+              <Button variant="contained" sx={{ bgcolor: "orange" }} onClick={onCalc}>CALC</Button>
               {error && <Alert severity="warning">{error}</Alert>}
             </Stack>
           </CardContent>
         </Card>
       </Grid>
 
-      {/* RESULT */}
       <Grid item xs={12} md={7}>
         <Card variant="outlined">
           <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Result
-            </Typography>
-
-            <Typography sx={{ mb: 0.5 }}>
-              Your DCA = <b>${fmtMoney(outD)}</b> / month
-            </Typography>
-            <Typography sx={{ mb: 0.5 }}>
-              Plan = <b>${fmtMoney(outG)}</b> in <b>{fmtYears(outY)}</b> years
-            </Typography>
-            <Typography sx={{ mb: 2 }}>
-              Percentage you need to achieve = <b>{fmtPct(outR)}</b>
-            </Typography>
-
+            <Typography variant="h6" gutterBottom>Result</Typography>
+            <Typography>Your DCA = <b>${fmtMoney(outD)}</b> / month</Typography>
+            <Typography>Plan = <b>${fmtMoney(outG)}</b> in <b>{fmtYears(outY)}</b> years</Typography>
+            <Typography>Needed ROI = <b>{fmtPct(outR)}</b></Typography>
             <Divider sx={{ my: 2 }} />
-
-            {/* TRACKER */}
-            <Box sx={{ mt: 1 }}>
-              <Typography variant="subtitle1">Portfolio Progress</Typography>
-              <Typography variant="body2" color="text.secondary">
-                Current Portfolio Value: ${fmtMoney(portfolioValue)} / Goal: $
-                {fmtMoney(outG)}
-              </Typography>
-              <LinearProgress
-                variant="determinate"
-                value={progress}
-                sx={{ height: 8, borderRadius: 5, mt: 1 }}
-              />
-              <Typography align="right" sx={{ mt: 1 }}>
-                {progress.toFixed(1)}%
-              </Typography>
-            </Box>
+            <Typography variant="subtitle1">Portfolio Progress</Typography>
+            <Typography color="text.secondary">
+              ${fmtMoney(portfolioValue)} / ${fmtMoney(outG)}
+            </Typography>
+            <LinearProgress variant="determinate" value={progress} sx={{ height: 8, borderRadius: 5, mt: 1 }}/>
+            <Typography align="right" sx={{ mt: 1 }}>{progress.toFixed(1)}%</Typography>
           </CardContent>
         </Card>
       </Grid>

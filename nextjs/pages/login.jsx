@@ -14,7 +14,7 @@ import Swal from "sweetalert2";
 
 export default function Login() {
   const [form, setForm] = useState({ username: "", password: "" });
-  const router = useRouter();  // ✅ add router
+  const router = useRouter();
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -31,7 +31,10 @@ export default function Login() {
       const result = await res.json();
       if (!res.ok) throw new Error(result.detail || "Login failed");
 
-      // ✅ Show success, then redirect
+      // ✅ Save user info locally
+      localStorage.setItem("user_id", result.user_id);
+      localStorage.setItem("username", result.username);
+
       Swal.fire({
         title: "Success!",
         text: result.message,
@@ -39,7 +42,7 @@ export default function Login() {
         timer: 1500,
         showConfirmButton: false,
       }).then(() => {
-        router.push("/dashboard"); // redirect to dashboard page
+        router.push("/dashboard");
       });
 
       setForm({ username: "", password: "" });
@@ -57,7 +60,6 @@ export default function Login() {
         <Typography variant="h6" sx={{ mb: 1.5, ml: 1 }}>
           Login
         </Typography>
-
         <Paper variant="outlined" sx={{ p: 3, borderRadius: 1.5 }}>
           <form onSubmit={handleSubmit}>
             <Stack spacing={2.2}>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Container,
   TextField,
@@ -18,25 +18,9 @@ export default function TransactionPage() {
   const [volume, setVolume] = useState("");
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [typingTimeout, setTypingTimeout] = useState(null);
 
-  const API_BASE = "http://localhost:8000/api"; // ✅ backend address
+  const API_BASE = "http://localhost:8000/api";
 
-  // 🔍 Auto-fetch when typing (>= 4 chars)
-  useEffect(() => {
-    if (symbol.length >= 4) {
-      // debounce so we don't call API every keystroke
-      if (typingTimeout) clearTimeout(typingTimeout);
-      const timeout = setTimeout(() => {
-        handleSearch();
-      }, 600);
-      setTypingTimeout(timeout);
-    }
-    // cleanup previous timeout on change
-    return () => clearTimeout(typingTimeout);
-  }, [symbol]);
-
-  // 🔍 Fetch stock info by symbol
   const handleSearch = async () => {
     if (!symbol.trim()) return;
     setLoading(true);
@@ -48,31 +32,27 @@ export default function TransactionPage() {
       setVolume("");
       setTotal(0);
     } catch (err) {
-      console.error(err);
       Swal.fire("Error", err.message, "error");
-      setStock(null);
     } finally {
       setLoading(false);
     }
   };
 
-  // 🔢 Update total when volume changes
   const handleVolumeChange = (e) => {
     const vol = e.target.value;
     setVolume(vol);
-    if (stock?.quote?.c) {
-      setTotal(parseFloat(vol || 0) * stock.quote.c);
-    }
+    if (stock?.quote?.c) setTotal(parseFloat(vol || 0) * stock.quote.c);
   };
 
-  // 🟢 Buy or 🔴 Sell
   const handleTransaction = async (type) => {
+    const userId = localStorage.getItem("user_id");
+    if (!userId) return Swal.fire("Error", "Please log in first.", "error");
     if (!stock) return Swal.fire("Error", "Search for a stock first.", "error");
     if (!volume || volume <= 0)
-      return Swal.fire("Error", "Please enter a valid volume.", "error");
+      return Swal.fire("Error", "Enter a valid volume.", "error");
 
     const payload = {
-      user_id: 1, // replace with your user id
+      user_id: parseInt(userId),
       symbol: stock.symbol,
       shares: parseInt(volume),
       avg_price: stock.quote.c,
@@ -95,17 +75,8 @@ export default function TransactionPage() {
   };
 
   return (
-    <Container
-      maxWidth="sm"
-      sx={{
-        mt: 10,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-      }}
-    >
+    <Container maxWidth="sm" sx={{ mt: 10 }}>
       <Paper sx={{ p: 4, borderRadius: 3, textAlign: "center" }}>
-        {/* 🔍 Search by symbol */}
         <Stack direction="row" spacing={1} justifyContent="center" sx={{ mb: 3 }}>
           <TextField
             placeholder="Enter stock symbol (e.g., AAPL)"
@@ -122,106 +93,50 @@ export default function TransactionPage() {
               ),
             }}
           />
-          <Button
-            variant="contained"
-            sx={{
-              backgroundColor: "#6b21a8",
-              "&:hover": { backgroundColor: "#581c87" },
-              textTransform: "none",
-            }}
-            onClick={handleSearch}
-            disabled={loading}
-          >
-            {loading ? <CircularProgress size={20} color="inherit" /> : "Go"}
+          <Button variant="contained" onClick={handleSearch} disabled={loading}>
+            {loading ? <CircularProgress size={20} /> : "Go"}
           </Button>
         </Stack>
 
-        {/* 📊 Stock Info */}
-        {loading ? (
-          <CircularProgress />
-        ) : (
-          stock && (
-            <>
-              <Typography variant="h6" sx={{ mb: 2 }}>
-                {stock.profile?.name || stock.symbol}
-              </Typography>
-
-              {/* Volume / Price Inputs */}
-              <Stack
-                direction="row"
-                justifyContent="center"
-                alignItems="center"
-                spacing={2}
-                sx={{ mb: 2 }}
+        {stock && (
+          <>
+            <Typography variant="h6">{stock.profile?.name || stock.symbol}</Typography>
+            <Stack direction="row" justifyContent="center" spacing={2} sx={{ mb: 2 }}>
+              <Typography>Volume</Typography>
+              <TextField
+                type="number"
+                size="small"
+                value={volume}
+                onChange={handleVolumeChange}
+                sx={{ width: 100 }}
+              />
+            </Stack>
+            <Stack direction="row" justifyContent="center" spacing={2} sx={{ mb: 3 }}>
+              <Typography>Price</Typography>
+              <TextField
+                size="small"
+                value={stock.quote?.c?.toFixed(2) ?? ""}
+                InputProps={{ readOnly: true }}
+                sx={{ width: 120 }}
+              />
+            </Stack>
+            <Stack direction="row" justifyContent="center" spacing={2}>
+              <Button
+                variant="contained"
+                sx={{ backgroundColor: "#fbbf24" }}
+                onClick={() => handleTransaction("buy")}
               >
-                <Typography>Volume</Typography>
-                <TextField
-                  type="number"
-                  size="small"
-                  value={volume}
-                  onChange={handleVolumeChange}
-                  sx={{ width: 100 }}
-                />
-              </Stack>
-
-              <Stack
-                direction="row"
-                justifyContent="center"
-                alignItems="center"
-                spacing={2}
-                sx={{ mb: 3 }}
+                Buy
+              </Button>
+              <Button
+                variant="contained"
+                sx={{ backgroundColor: "#dc2626" }}
+                onClick={() => handleTransaction("sell")}
               >
-                <Typography>Price</Typography>
-                <TextField
-                  size="small"
-                  value={stock.quote?.c?.toFixed(2) ?? ""}
-                  InputProps={{ readOnly: true }}
-                  sx={{ width: 120 }}
-                />
-              </Stack>
-
-              {/* Buttons */}
-              <Stack direction="row" justifyContent="center" spacing={2} sx={{ mb: 3 }}>
-                <Button
-                  variant="contained"
-                  sx={{
-                    backgroundColor: "#fbbf24",
-                    "&:hover": { backgroundColor: "#f59e0b" },
-                    width: 90,
-                  }}
-                  onClick={() => handleTransaction("buy")}
-                >
-                  Buy
-                </Button>
-                <Button
-                  variant="contained"
-                  sx={{
-                    backgroundColor: "#dc2626",
-                    "&:hover": { backgroundColor: "#b91c1c" },
-                    width: 90,
-                  }}
-                  onClick={() => handleTransaction("sell")}
-                >
-                  Sell
-                </Button>
-              </Stack>
-
-              {/* Info */}
-              <Typography>
-                <strong>Current Price:</strong>{" "}
-                {stock.quote?.c ? `$${stock.quote.c.toFixed(2)}` : "—"}
-              </Typography>
-              <Typography>
-                <strong>Total:</strong> {total ? `$${total.toFixed(2)}` : "—"}
-              </Typography>
-              <Typography>
-                <strong>Bid:</strong> {stock.quote?.h ?? "-"}
-              </Typography>
-              <Typography>
-                <strong>Offer:</strong> {stock.quote?.l ?? "-"}
-              </Typography>
-            </>
-          )
+                Sell
+              </Button>
+            </Stack>
+          </>
         )}
       </Paper>
     </Container>
