@@ -1,12 +1,13 @@
 from __future__ import annotations
 import os
+import asyncio
+import time
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 import httpx
-
+os.environ["FINNHUB_TOKEN"] = "d3h8o3pr01qstnq865ngd3h8o3pr01qstnq865o0"
 router = APIRouter(prefix="/api/stocks", tags=["stocks"])
-
 FINNHUB_BASE = "https://finnhub.io/api/v1"
 
 
@@ -44,7 +45,7 @@ class StockCombined(BaseModel):
 
 class CandleResponse(BaseModel):
     s: str                       # status: "ok" | "no_data"
-    t: Optional[List[int]] = []  # timestamps (unix sec)
+    t: Optional[List[int]] = []  # timestamps
     c: Optional[List[float]] = []
     o: Optional[List[float]] = []
     h: Optional[List[float]] = []
@@ -67,10 +68,11 @@ async def _fh_get(client: httpx.AsyncClient, path: str, params: Dict[str, Any]) 
         r = await client.get(f"{FINNHUB_BASE}{path}", params=qp, timeout=15.0)
         if r.status_code == 429:
             raise HTTPException(status_code=503, detail="Finnhub rate limit reached. Try again shortly.")
+        if r.status_code == 403:
+            raise HTTPException(status_code=403, detail="Forbidden: Check your Finnhub token or plan limits.")
         r.raise_for_status()
         return r.json()
     except httpx.HTTPStatusError as e:
-        detail = None
         try:
             detail = e.response.json()
         except Exception:
@@ -84,14 +86,8 @@ async def _fetch_profile_and_quote(client: httpx.AsyncClient, symbol: str) -> St
     symbol = symbol.upper()
     profile_json = await _fh_get(client, "/stock/profile2", {"symbol": symbol})
     quote_json   = await _fh_get(client, "/quote", {"symbol": symbol})
-
-    # Parse into models
     profile = Profile(**profile_json) if profile_json else Profile()
     quote = Quote(**quote_json) if quote_json else Quote()
-
-    # Debug: log empty responses
-    if not profile_json or not quote_json:
-        print(f"[WARN] Empty response for {symbol}: profile={profile_json}, quote={quote_json}")
 
     if not (profile.name or quote.c):
         raise HTTPException(status_code=404, detail=f"Symbol '{symbol}' not found.")
@@ -102,7 +98,7 @@ async def _fetch_profile_and_quote(client: httpx.AsyncClient, symbol: str) -> St
 # ---------- Routes ----------
 @router.get("/{symbol}", response_model=StockCombined)
 async def get_stock(symbol: str):
-    """Returns company profile + real-time quote for one symbol."""
+    """Return company profile + real-time quote."""
     async with httpx.AsyncClient() as client:
         return await _fetch_profile_and_quote(client, symbol)
 
@@ -113,38 +109,52 @@ async def get_stocks(symbols: str = Query(..., description="Comma-separated symb
     syms = [s.strip().upper() for s in symbols.split(",") if s.strip()]
     if not syms:
         raise HTTPException(status_code=400, detail="No symbols provided.")
+    if len(syms) > 25:
+        raise HTTPException(status_code=400, detail="Limit is 25 symbols.")
 
     async with httpx.AsyncClient() as client:
-        results: List[StockCombined] = []
-        for s in syms:
-            try:
-                results.append(await _fetch_profile_and_quote(client, s))
-            except HTTPException as e:
-                print(f"[ERROR] Could not fetch {s}: {e.detail}")
-                results.append(StockCombined(symbol=s, profile=Profile(), quote=Quote()))
-        return results
+        tasks = [_fetch_profile_and_quote(client, s) for s in syms]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        output: List[StockCombined] = []
+        for s, r in zip(syms, results):
+            if isinstance(r, Exception):
+                print(f"[ERROR] Could not fetch {s}: {r}")
+                output.append(StockCombined(symbol=s, profile=Profile(), quote=Quote()))
+            else:
+                output.append(r)
+        return output
 
 
 @router.get("/{symbol}/candles", response_model=CandleResponse)
 async def get_candles(
     symbol: str,
-    resolution: str = Query("D", description="1,5,15,30,60, D, W, M"),
-    from_unix: int = Query(..., alias="from"),
-    to_unix: int = Query(..., alias="to")
+    resolution: str = Query("D", description="1,5,15,30,60,D,W,M"),
+    from_unix: Optional[int] = Query(None, alias="from"),
+    to_unix: Optional[int] = Query(None, alias="to"),
 ):
-    """Historical OHLCV candles for a symbol between 'from' and 'to' (UNIX seconds)."""
+    """
+    Historical OHLCV candles.
+    If 'from' and 'to' are not provided → defaults to last 3 months.
+    """
+    now = int(time.time())
+    three_months_ago = now - 60 * 60 * 24 * 90
+
+    # Apply defaults
+    from_ts = from_unix or three_months_ago
+    to_ts = to_unix or now
+
     async with httpx.AsyncClient() as client:
-        data = await _fh_get(client, "/stock/candle", {
-            "symbol": symbol.upper(),
-            "resolution": resolution,
-            "from": from_unix,
-            "to": to_unix
-        })
+        data = await _fh_get(
+            client,
+            "/stock/candle",
+            {"symbol": symbol.upper(), "resolution": resolution, "from": from_ts, "to": to_ts},
+        )
         return CandleResponse(**data)
 
 
 @router.get("/search", summary="Symbol lookup")
 async def search_symbols(q: str = Query(..., description="Company name or ticker, e.g. 'apple'")):
-    """Lightweight symbol search (useful for autocomplete)."""
+    """Lightweight symbol search."""
     async with httpx.AsyncClient() as client:
         return await _fh_get(client, "/search", {"q": q})

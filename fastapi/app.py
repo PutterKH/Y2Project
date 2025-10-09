@@ -4,9 +4,13 @@ from pydantic import BaseModel
 from database import *
 from routes.users import router as users_router
 from routes.stock import router as stock_router
+from routes.portfolio import router as portfolio_router
 from fastapi.middleware.cors import CORSMiddleware
+from routes.portfolio import router as portfolio_router
+from dotenv import load_dotenv
+import os
 
-
+load_dotenv()
 app = FastAPI()
 app.add_middleware(
         CORSMiddleware,
@@ -18,6 +22,7 @@ app.add_middleware(
 
 app.include_router(users_router, prefix="/api")
 app.include_router(stock_router)
+app.include_router(portfolio_router)
 
 @app.on_event("startup")
 async def startup():

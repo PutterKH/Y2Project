@@ -24,9 +24,10 @@
     "decimal.js": "^10.4.3",
     "js-cookie": "^3.0.5",
     "lodash": "^4.17.21",
-    "next": "14.2.5",
+    "next": "^14.2.33",
     "react": "^18",
     "react-dom": "^18",
+    "recharts": "^3.2.1",
     "sweetalert2": "^11.12.4",
     "zustand": "^4.5.4"
   }

@@ -1,5 +1,5 @@
 // pages/calculator.js
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
   Typography,
   Button,
@@ -13,6 +13,7 @@ import {
   Alert,
   Stack,
 } from "@mui/material";
+import Swal from "sweetalert2";
 
 function parseNum(v) {
   if (v === "" || v === null || v === undefined) return null;
@@ -27,7 +28,7 @@ function fmtMoney(n) {
 }
 function fmtYears(n) {
   if (n === null || Number.isNaN(n)) return "—";
-  return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  return n.toLocaleString(undefined, { maximumFractionDigits: 1 });
 }
 function fmtPct(n) {
   if (n === null || Number.isNaN(n)) return "—";
@@ -40,7 +41,35 @@ export default function CalculatorPage() {
   const [years, setYears] = useState("");
   const [roi, setRoi] = useState("");
   const [error, setError] = useState("");
+  const [portfolioValue, setPortfolioValue] = useState(0);
 
+  // 🔹 Fetch total portfolio value from backend
+  async function fetchPortfolioValue() {
+    try {
+      const res = await fetch("http://localhost:8000/api/portfolio/1"); // user_id = 1
+      if (!res.ok) throw new Error("Failed to fetch portfolio data");
+      const data = await res.json();
+
+      // Calculate total (shares × avg_price)
+      const total = data.reduce(
+        (sum, stock) => sum + stock.shares * stock.avg_price,
+        0
+      );
+      setPortfolioValue(total);
+    } catch (err) {
+      console.error(err);
+      Swal.fire("Error", err.message, "error");
+    }
+  }
+
+  // 🔹 Auto-refresh every 60 sec
+  useEffect(() => {
+    fetchPortfolioValue();
+    const interval = setInterval(fetchPortfolioValue, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // 🔹 Core calculation logic
   const { outD, outG, outY, outR, progress } = useMemo(() => {
     const D = parseNum(dca);
     const G = parseNum(goal);
@@ -62,29 +91,58 @@ export default function CalculatorPage() {
 
     if (count === 3) {
       const missingIdx = provided.indexOf(false);
+
       if (missingIdx === 0) {
-        const Mtarget = G / (1 + (R / 100));
+        // Missing DCA
+        const Mtarget = G / (1 + R / 100);
         outD = Mtarget / (12 * Y);
+
       } else if (missingIdx === 1) {
+        // Missing Goal
         const Mcalc = D * 12 * Y;
-        outG = Mcalc * (1 + (R / 100));
+        outG = Mcalc * (1 + R / 100);
+
+        // ROI <= 0 case
+        if (outG < 0 || Mcalc >= G) {
+          outG = G;
+          outR = 0;
+          outY = Math.ceil((G / (D * 12)) * 10) / 10; // round up X.Y years
+        }
+
       } else if (missingIdx === 2) {
-        const Mtarget = G / (1 + (R / 100));
+        // Missing Years
+        const Mtarget = G / (1 + R / 100);
         outY = Mtarget / (12 * D);
+
+        // ROI <= 0 case
+        if (D * 12 * outY >= G) {
+          outY = Math.ceil((G / (D * 12)) * 10) / 10;
+          outR = 0;
+        }
+
       } else if (missingIdx === 3) {
+        // Missing ROI
         const Mcalc = D * 12 * Y;
         outR = ((G - Mcalc) / Mcalc) * 100;
+
+        if (outR < 0) {
+          outR = 0;
+          outG = G;
+          outY = Math.ceil((G / (D * 12)) * 10) / 10; // round up X.Y years
+        }
       }
     }
 
+    // 🔹 Progress based on portfolio total only
     const progress =
-      outG && outG > 0 && D && Y
-        ? Math.max(0, Math.min(100, ((D * 12 * Y) / outG) * 100))
+      G && parseNum(G) > 0
+        ? Math.max(0, Math.min(100, (portfolioValue / parseNum(G)) * 100))
         : 0;
 
     return { outD, outG, outY, outR, progress };
-  }, [dca, goal, years, roi]);
+  }, [dca, goal, years, roi, portfolioValue]);
 
+  // 🔹 Button validation
   const onCalc = () => {
     const D = parseNum(dca);
     const G = parseNum(goal);
@@ -136,7 +194,11 @@ export default function CalculatorPage() {
                 placeholder="e.g., 8"
               />
 
-              <Button variant="contained" sx={{ bgcolor: "orange" }} onClick={onCalc}>
+              <Button
+                variant="contained"
+                sx={{ bgcolor: "orange" }}
+                onClick={onCalc}
+              >
                 CALC
               </Button>
 
@@ -166,9 +228,13 @@ export default function CalculatorPage() {
 
             <Divider sx={{ my: 2 }} />
 
-            {/* Tracker */}
+            {/* TRACKER */}
             <Box sx={{ mt: 1 }}>
-              <Typography variant="subtitle1">Tracker to Goal</Typography>
+              <Typography variant="subtitle1">Portfolio Progress</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Current Portfolio Value: ${fmtMoney(portfolioValue)} / Goal: $
+                {fmtMoney(outG)}
+              </Typography>
               <LinearProgress
                 variant="determinate"
                 value={progress}
