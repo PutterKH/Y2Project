@@ -101,6 +101,8 @@ export default function TransactionPage() {
         {stock && (
           <>
             <Typography variant="h6">{stock.profile?.name || stock.symbol}</Typography>
+
+            {/* Volume input */}
             <Stack direction="row" justifyContent="center" spacing={2} sx={{ mb: 2 }}>
               <Typography>Volume</Typography>
               <TextField
@@ -111,7 +113,9 @@ export default function TransactionPage() {
                 sx={{ width: 100 }}
               />
             </Stack>
-            <Stack direction="row" justifyContent="center" spacing={2} sx={{ mb: 3 }}>
+
+            {/* Price display */}
+            <Stack direction="row" justifyContent="center" spacing={2} sx={{ mb: 2 }}>
               <Typography>Price</Typography>
               <TextField
                 size="small"
@@ -120,6 +124,19 @@ export default function TransactionPage() {
                 sx={{ width: 120 }}
               />
             </Stack>
+
+            {/* Total display */}
+            <Stack direction="row" justifyContent="center" spacing={2} sx={{ mb: 3 }}>
+              <Typography>Total</Typography>
+              <TextField
+                size="small"
+                value={total ? total.toFixed(2) : ""}
+                InputProps={{ readOnly: true }}
+                sx={{ width: 120 }}
+              />
+            </Stack>
+
+            {/* Transaction buttons */}
             <Stack direction="row" justifyContent="center" spacing={2}>
               <Button
                 variant="contained"
