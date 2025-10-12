@@ -1,4 +1,9 @@
-fastapi[standard]
-uvicorn
-databases[asyncpg]
-pydantic
+fastapi
+uvicorn[standard]
+databases[postgresql]
+psycopg2-binary
+sqlalchemy
+passlib[bcrypt]
+bcrypt==3.2.2
+python-dotenv
+httpx
